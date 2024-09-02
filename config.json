@@ -1,0 +1,9 @@
+{
+  "symbol": "BTCUSDT",
+  "interval": "1m",
+  "quantity": 0.001,
+  "shortEMA": 12,
+  "longEMA": 26,
+  "sleepTime": 60,
+  "assets": ["BTC", "USDT"]
+}
