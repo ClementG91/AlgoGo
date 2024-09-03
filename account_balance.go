@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -20,7 +21,29 @@ type AccountInfo struct {
 	} `json:"balances"`
 }
 
+var (
+	accountInfoCache struct {
+		sync.RWMutex
+		info *AccountInfo
+		lastUpdate time.Time
+	}
+)
+
 func getAccountInfo() (*AccountInfo, error) {
+	accountInfoCache.RLock()
+	if time.Since(accountInfoCache.lastUpdate) < 5*time.Second {
+		defer accountInfoCache.RUnlock()
+		return accountInfoCache.info, nil
+	}
+	accountInfoCache.RUnlock()
+
+	accountInfoCache.Lock()
+	defer accountInfoCache.Unlock()
+
+	if time.Since(accountInfoCache.lastUpdate) < 5*time.Second {
+		return accountInfoCache.info, nil
+	}
+
 	timestamp := time.Now().Unix() * 1000
 	params := fmt.Sprintf("timestamp=%d", timestamp)
 	signature := signRequest(params)
@@ -34,8 +57,7 @@ func getAccountInfo() (*AccountInfo, error) {
 	req.Header.Set("X-MBX-APIKEY", AppSecret.APIKey)
 	req.URL.RawQuery = params
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("erreur lors de l'envoi de la requête : %v", err)
 	}
@@ -43,8 +65,7 @@ func getAccountInfo() (*AccountInfo, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		bodyString := string(bodyBytes)
-		return nil, fmt.Errorf("échec de la récupération des informations du compte : %s, réponse : %s", resp.Status, bodyString)
+		return nil, fmt.Errorf("échec de la récupération des informations du compte : %s, réponse : %s", resp.Status, string(bodyBytes))
 	}
 
 	var accountInfo AccountInfo
@@ -52,14 +73,16 @@ func getAccountInfo() (*AccountInfo, error) {
 		return nil, fmt.Errorf("erreur lors du décodage de la réponse : %v", err)
 	}
 
+	accountInfoCache.info = &accountInfo
+	accountInfoCache.lastUpdate = time.Now()
+
 	return &accountInfo, nil
 }
 
-func printAccountBalance() {
+func printAccountBalance() error {
 	accountInfo, err := getAccountInfo()
 	if err != nil {
-		handleError(err)
-		return
+		return err
 	}
 
 	fmt.Println("Soldes du compte :")
@@ -71,4 +94,5 @@ func printAccountBalance() {
 			}
 		}
 	}
+	return nil
 }

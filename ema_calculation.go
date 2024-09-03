@@ -1,6 +1,9 @@
 package main
 
+import "fmt"
+
 func calculateEMA(prices []float64, period int) []float64 {
+	fmt.Printf("Calcul de l'EMA pour une période de %d\n", period)
 	ema := make([]float64, len(prices))
 	multiplier := 2.0 / float64(period+1)
 	ema[0] = prices[0]
