@@ -65,25 +65,66 @@ func main() {
 	fmt.Println("Programme terminé.")
 }
 
+// Structure pour gérer l'état du trading
+type TradingState struct {
+	mu sync.Mutex
+}
+
+var tradingState = TradingState{}
+
 func runTradingCycle() error {
 	fmt.Println("Début du cycle de trading")
 
-	closingPrices, err := fetchMarketData(AppConfig.Symbol, AppConfig.Interval, 100)
+	closingPrices, err := fetchMarketData(AppConfig.Symbol, AppConfig.Interval, 1000)
 	if err != nil {
 		return fmt.Errorf("erreur lors de la récupération des données du marché : %v", err)
 	}
 	if len(closingPrices) == 0 {
 		return fmt.Errorf("aucun prix de clôture récupéré")
 	}
-	fmt.Printf("Prix de clôture récupérés : %v\n", closingPrices[len(closingPrices)-1])
 
 	shortEMA := calculateEMA(closingPrices, AppConfig.ShortEMA)
 	longEMA := calculateEMA(closingPrices, AppConfig.LongEMA)
 	signal := generateSignal(shortEMA, longEMA)
 
-	fmt.Printf("Signal généré : %s\n", signal)
-
 	price := closingPrices[len(closingPrices)-1]
+	
+	// Calcul du PnL et enregistrement du trade si un signal est généré
+	if signal != "HOLD" {
+		tradingState.mu.Lock()
+		
+		if signal == "BUY" {
+			GlobalPositionTracker.OpenPosition(
+				AppConfig.Symbol,
+				price,
+				AppConfig.Quantity,
+				shortEMA[len(shortEMA)-1],
+				longEMA[len(longEMA)-1],
+			)
+		} else if signal == "SELL" {
+			position := GlobalPositionTracker.ClosePosition(AppConfig.Symbol)
+			if position != nil {
+				trade := Trade{
+					Timestamp:     time.Now(),
+					Symbol:        AppConfig.Symbol,
+					Type:         "SELL",
+					Price:        price,
+					Quantity:     position.Quantity,
+					PnL:          (price - position.EntryPrice) * position.Quantity,
+					PnLPercentage: ((price - position.EntryPrice) / position.EntryPrice) * 100,
+				}
+				
+				if err := logTrade(trade); err != nil {
+					tradingState.mu.Unlock()
+					fmt.Printf("Erreur lors de l'enregistrement du trade : %v\n", err)
+				}
+			}
+		}
+		
+		tradingState.mu.Unlock()
+	}
+
+	fmt.Printf("Signal généré : %s\n", signal)
 
 	var orderErr error
 	switch signal {

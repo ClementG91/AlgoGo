@@ -12,5 +12,8 @@ func calculateEMA(prices []float64, period int) []float64 {
 		ema[i] = ((prices[i] - ema[i-1]) * multiplier) + ema[i-1]
 	}
 
+	fmt.Printf("Dernière valeur EMA-%d : %f\n", period, ema[len(ema)-1])
+	fmt.Printf("Avant-dernière valeur EMA-%d : %f\n", period, ema[len(ema)-2])
+
 	return ema
 }
